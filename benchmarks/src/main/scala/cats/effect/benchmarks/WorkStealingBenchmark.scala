@@ -17,11 +17,11 @@
 package cats.effect.benchmarks
 
 import cats.effect.IO
+import cats.effect.unsafe.ThreadSafeHashtable.{inters, ops}
 import cats.effect.unsafe._
 import cats.syntax.all._
 
 import scala.concurrent.ExecutionContext
-
 import java.util.concurrent.{Executors, TimeUnit}
 import java.util.concurrent.atomic.AtomicInteger
 import org.openjdk.jmh.annotations._
@@ -116,6 +116,43 @@ class WorkStealingBenchmark {
   def alloc(): Int = {
     import cats.effect.unsafe.implicits.global
     allocBenchmark
+  }
+
+  def runnableSchedulingBenchmark(ec: ExecutionContext): Unit = {
+    val theSize = 16 * 1024
+    val countDown = new java.util.concurrent.CountDownLatch(theSize)
+
+    def run(j: Int): Unit = {
+      ec.execute { () =>
+        if (j > 1000) {
+          countDown.countDown()
+        } else {
+          run(j + 1)
+        }
+      }
+    }
+
+    (0 to theSize)
+      .foreach(_ => run(0))
+
+    countDown.await()
+  }
+
+  println("\nStarting!")
+  new Thread(() => {
+    println("\nStarted!")
+    while(true) {
+      Thread.sleep(10000, 0)
+      println(s"ops: ${ops.sum()} iters: ${inters.sum()} iters/op: ${inters.sum().toDouble / ops.sum()}")
+    }
+  }).start()
+
+  /**
+   * Demonstrates performance of WorkStealingThreadPool when executing Runnables (that includes Futures).
+   */
+  @Benchmark
+  def runnableScheduling(): Unit = {
+    runnableSchedulingBenchmark(cats.effect.unsafe.implicits.global.compute)
   }
 
   lazy val manyThreadsRuntime: IORuntime = {

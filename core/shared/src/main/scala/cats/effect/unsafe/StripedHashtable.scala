@@ -16,6 +16,8 @@
 
 package cats.effect.unsafe
 
+import scala.util.hashing.MurmurHash3
+
 /**
  * A conceptual hash table which balances between several
  * [[ThreadSafeHashtable]]s, in order to reduce the contention on the single
@@ -24,7 +26,7 @@ package cats.effect.unsafe
  */
 private[effect] final class StripedHashtable {
   val numTables: Int = {
-    val cpus = Runtime.getRuntime().availableProcessors()
+    val cpus = Runtime.getRuntime().availableProcessors() * 16
     // Bit twiddling hacks.
     // http://graphics.stanford.edu/~seander/bithacks.html#RoundUpPowerOf2
     var value = cpus - 1
@@ -34,6 +36,16 @@ private[effect] final class StripedHashtable {
     value |= value >> 8
     value |= value >> 16
     value + 1
+  }
+
+  val log2NumTables = {
+    var result = 0
+    var init = numTables
+    while(init != 0){
+      result += 1
+      init >>= 1
+    }
+    result
   }
 
   private[this] val mask: Int = numTables - 1
@@ -52,13 +64,14 @@ private[effect] final class StripedHashtable {
 
   def put(cb: Throwable => Unit): Unit = {
     val hash = System.identityHashCode(cb)
+//    println(f"$hash%08x")
     val idx = hash & mask
-    tables(idx).put(cb, hash)
+    tables(idx).put(cb, hash >> log2NumTables)
   }
 
   def remove(cb: Throwable => Unit): Unit = {
     val hash = System.identityHashCode(cb)
     val idx = hash & mask
-    tables(idx).remove(cb, hash)
+    tables(idx).remove(cb, hash >> log2NumTables)
   }
 }

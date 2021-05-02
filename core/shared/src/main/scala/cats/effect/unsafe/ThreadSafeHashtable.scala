@@ -17,6 +17,10 @@
 package cats.effect
 package unsafe
 
+import cats.effect.unsafe.ThreadSafeHashtable.{inters, ops}
+
+import java.util.concurrent.atomic.LongAdder
+
 /**
  * A primitive thread safe hash table implementation specialized for a single
  * purpose, to hold references to the error callbacks of fibers. The hashing
@@ -38,7 +42,7 @@ private[effect] final class ThreadSafeHashtable(initialCapacity: Int) {
 
   def put(cb: Throwable => Unit, hash: Int): Unit = this.synchronized {
     val cap = capacity
-    if (size == cap) {
+    if (size * 2 >= cap) {
       val newCap = cap * 2
       val newHashtable = new Array[Throwable => Unit](newCap)
       System.arraycopy(hashtable, 0, newHashtable, 0, cap)
@@ -48,10 +52,14 @@ private[effect] final class ThreadSafeHashtable(initialCapacity: Int) {
     }
 
     var idx = hash & mask
+    var j = 0
     while (true) {
+      j+=1
       if (hashtable(idx) == null) {
         hashtable(idx) = cb
         size += 1
+        ops.add(1)
+        inters.add(j)
         return
       } else {
         idx += 1
@@ -77,4 +85,9 @@ private[effect] final class ThreadSafeHashtable(initialCapacity: Int) {
       }
     }
   }
+}
+
+object ThreadSafeHashtable {
+  val ops = new LongAdder
+  val inters = new LongAdder
 }
