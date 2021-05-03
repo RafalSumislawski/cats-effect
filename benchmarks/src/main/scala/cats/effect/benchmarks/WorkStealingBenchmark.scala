@@ -17,11 +17,11 @@
 package cats.effect.benchmarks
 
 import cats.effect.IO
+import cats.effect.unsafe.ThreadSafeHashtable.{inters, ops}
 import cats.effect.unsafe._
 import cats.syntax.all._
 
 import scala.concurrent.ExecutionContext
-
 import java.util.concurrent.{Executors, TimeUnit}
 import java.util.concurrent.atomic.AtomicInteger
 import org.openjdk.jmh.annotations._
@@ -119,7 +119,7 @@ class WorkStealingBenchmark {
   }
 
   def runnableSchedulingBenchmark(ec: ExecutionContext): Unit = {
-    val theSize = 10000
+    val theSize = 14 * 1024
     val countDown = new java.util.concurrent.CountDownLatch(theSize)
 
     def run(j: Int): Unit = {
@@ -144,6 +144,16 @@ class WorkStealingBenchmark {
   def runnableScheduling(): Unit = {
     runnableSchedulingBenchmark(cats.effect.unsafe.implicits.global.compute)
   }
+
+  println("\nStarting!")
+  new Thread(() => {
+    println("\nStarted!")
+    while(true) {
+      Thread.sleep(4000, 0)
+      println(s"\nops: ${ops.sum()} iters: ${inters.sum()} iters/op: ${inters.sum().toDouble / ops.sum()}")
+      println("\nloadfactors" + cats.effect.unsafe.implicits.global.fiberErrorCbs.tables.map(t => t.synchronized( t.size.toDouble / t.hashtable.length)).mkString(" "))
+    }
+  }).start()
 
   lazy val manyThreadsRuntime: IORuntime = {
     val (blocking, blockDown) = {
